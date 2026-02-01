@@ -1,5 +1,4 @@
 {
-  "project_page_id": "your-project-page-id-here",
-  "prd_db_id": "auto-generated-or-manual",
-  "dev_log_db_id": "auto-generated-or-manual"
+  "prd_db_id": "your-prd-database-id",
+  "dev_log_db_id": "your-dev-log-database-id"
 }

@@ -1,41 +1,25 @@
 #!/usr/bin/env python3
 """
-notion-connect: 프로젝트와 노션 연동 설정
+notion-connect: 프로젝트와 노션 연동 설정 (수동)
 """
 import os
 import json
-import requests
+import re
 
-NOTION_API = "https://api.notion.com/v1"
-NOTION_VERSION = "2025-09-03"
-
-def get_api_key():
-    key_path = os.path.expanduser("~/.config/notion/api_key")
-    if os.path.exists(key_path):
-        with open(key_path) as f:
-            return f.read().strip()
-    raise FileNotFoundError("노션 API 키가 없습니다. ~/.config/notion/api_key 파일을 생성하세요.")
-
-def notion_request(method, endpoint, data=None):
-    headers = {
-        "Authorization": f"Bearer {get_api_key()}",
-        "Notion-Version": NOTION_VERSION,
-        "Content-Type": "application/json"
-    }
-    url = f"{NOTION_API}{endpoint}"
-    resp = requests.request(method, url, headers=headers, json=data)
-    resp.raise_for_status()
-    return resp.json()
-
-def create_database(parent_page_id, title, properties):
-    """노션에 새 데이터베이스 생성"""
-    data = {
-        "parent": {"page_id": parent_page_id},
-        "title": [{"text": {"content": title}}],
-        "properties": properties
-    }
-    result = notion_request("POST", "/databases", data)
-    return result["id"]
+def extract_id_from_url(url):
+    """노션 URL에서 ID 추출"""
+    # 패턴 1: notion.so/페이지이름-32자리ID
+    # 패턴 2: notion.so/32자리ID?v=...
+    # 패턴 3: notion.so/workspace/32자리ID
+    
+    # 32자리 hex (대시 없이)
+    match = re.search(r'([a-f0-9]{32})', url.replace('-', ''))
+    if match:
+        raw_id = match.group(1)
+        # UUID 형식으로 변환 (8-4-4-4-12)
+        return f"{raw_id[:8]}-{raw_id[8:12]}-{raw_id[12:16]}-{raw_id[16:20]}-{raw_id[20:]}"
+    
+    return None
 
 def setup():
     print("🔗 notion-connect 설정\n")
@@ -53,59 +37,28 @@ def setup():
         if input("\n덮어쓸까요? (y/N): ").lower() != 'y':
             return
     
-    # 프로젝트 페이지 ID
-    print("\n노션 프로젝트 페이지 ID를 입력하세요.")
-    print("(페이지 URL에서 마지막 32자리, 또는 대시 포함 UUID)")
-    project_page_id = input("프로젝트 페이지 ID: ").strip()
+    print("노션에서 각 DB/페이지의 링크를 복사해서 붙여넣으세요.\n")
     
-    if not project_page_id:
-        print("❌ 페이지 ID가 필요합니다.")
+    # PRD DB URL
+    prd_url = input("📋 PRD DB URL: ").strip()
+    prd_id = extract_id_from_url(prd_url)
+    if not prd_id:
+        print("❌ PRD URL에서 ID를 찾을 수 없습니다.")
         return
+    print(f"   → ID: {prd_id}")
     
-    # 자동 DB 생성 여부
-    auto_create = input("\nPRD/Dev Log DB를 자동 생성할까요? (Y/n): ").lower() != 'n'
+    # Dev Log DB URL
+    log_url = input("📝 Dev Log DB URL: ").strip()
+    log_id = extract_id_from_url(log_url)
+    if not log_id:
+        print("❌ Dev Log URL에서 ID를 찾을 수 없습니다.")
+        return
+    print(f"   → ID: {log_id}")
     
-    config = {"project_page_id": project_page_id}
-    
-    if auto_create:
-        print("\n📦 PRD 데이터베이스 생성 중...")
-        prd_props = {
-            "이름": {"title": {}},
-            "상태": {"select": {"options": [
-                {"name": "대기", "color": "gray"},
-                {"name": "진행중", "color": "blue"},
-                {"name": "완료", "color": "green"},
-                {"name": "보류", "color": "red"}
-            ]}},
-            "우선순위": {"select": {"options": [
-                {"name": "🔴 높음", "color": "red"},
-                {"name": "🟡 중간", "color": "yellow"},
-                {"name": "🟢 낮음", "color": "green"}
-            ]}},
-            "설명": {"rich_text": {}},
-            "생성일": {"created_time": {}}
-        }
-        config["prd_db_id"] = create_database(project_page_id, "📋 PRD", prd_props)
-        print(f"  ✅ PRD DB: {config['prd_db_id']}")
-        
-        print("📝 Dev Log 데이터베이스 생성 중...")
-        log_props = {
-            "제목": {"title": {}},
-            "날짜": {"date": {}},
-            "타입": {"select": {"options": [
-                {"name": "기능", "color": "blue"},
-                {"name": "버그", "color": "red"},
-                {"name": "리팩토링", "color": "purple"},
-                {"name": "문서", "color": "gray"}
-            ]}},
-            "내용": {"rich_text": {}},
-            "관련 PRD": {"relation": {"database_id": config["prd_db_id"]}}
-        }
-        config["dev_log_db_id"] = create_database(project_page_id, "📝 Dev Log", log_props)
-        print(f"  ✅ Dev Log DB: {config['dev_log_db_id']}")
-    else:
-        config["prd_db_id"] = input("PRD DB ID: ").strip()
-        config["dev_log_db_id"] = input("Dev Log DB ID: ").strip()
+    config = {
+        "prd_db_id": prd_id,
+        "dev_log_db_id": log_id
+    }
     
     # 저장
     os.makedirs(config_dir, exist_ok=True)
