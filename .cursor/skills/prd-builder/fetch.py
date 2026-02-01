@@ -8,7 +8,7 @@ import requests
 import sys
 
 NOTION_API = "https://api.notion.com/v1"
-NOTION_VERSION = "2025-09-03"
+NOTION_VERSION = "2022-06-28"
 
 def get_api_key():
     key_path = os.path.expanduser("~/.config/notion/api_key")
@@ -34,36 +34,38 @@ def notion_request(method, endpoint, data=None):
     return resp.json()
 
 def fetch_prds(status_filter=None):
-    """PRD 목록 가져오기"""
+    """작업 DB에서 PRD(요구사항) 목록 가져오기"""
     config = get_config()
-    db_id = config["prd_db_id"]
-    
-    # 필터 구성
-    query = {"sorts": [{"property": "생성일", "direction": "descending"}]}
-    
+    db_id = config.get("tasks_db_id") or config.get("prd_db_id")
+    if not db_id:
+        raise KeyError("설정에 tasks_db_id 또는 prd_db_id가 없습니다. notion-connect로 project_page_id, tasks_db_id를 설정하세요.")
+
+    # 정렬: created_time 사용 (생성일 속성 없어도 동작)
+    query = {"sorts": [{"timestamp": "created_time", "direction": "descending"}]}
     if status_filter:
         query["filter"] = {"property": "상태", "select": {"equals": status_filter}}
-    
+
     result = notion_request("POST", f"/databases/{db_id}/query", query)
-    
+
     prds = []
     for page in result.get("results", []):
         props = page["properties"]
-        
-        # 속성 추출
+
+        # 속성 추출 (이름/Name, 설명/내용 등 폴백)
         name = ""
-        if props.get("이름", {}).get("title"):
-            name = props["이름"]["title"][0]["plain_text"]
-        
+        for key in ("이름", "Name"):
+            if props.get(key, {}).get("title"):
+                name = props[key]["title"][0]["plain_text"]
+                break
         status = props.get("상태", {}).get("select", {})
         status_name = status.get("name", "없음") if status else "없음"
-        
         priority = props.get("우선순위", {}).get("select", {})
         priority_name = priority.get("name", "없음") if priority else "없음"
-        
         desc = ""
-        if props.get("설명", {}).get("rich_text"):
-            desc = props["설명"]["rich_text"][0]["plain_text"]
+        for key in ("설명", "내용", "Description"):
+            if props.get(key, {}).get("rich_text"):
+                desc = props[key]["rich_text"][0]["plain_text"]
+                break
         
         prds.append({
             "id": page["id"],

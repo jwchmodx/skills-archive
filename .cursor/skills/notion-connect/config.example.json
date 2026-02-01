@@ -1,4 +1,4 @@
 {
-  "prd_db_id": "your-prd-database-id",
-  "dev_log_db_id": "your-dev-log-database-id"
+  "project_page_id": "your-project-page-id",
+  "tasks_db_id": "your-tasks-database-id"
 }
